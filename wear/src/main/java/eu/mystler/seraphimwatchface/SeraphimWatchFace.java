@@ -24,14 +24,12 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.ColorMatrix;
-import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-//import android.support.v7.graphics.Palette;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
@@ -85,17 +83,14 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         private static final float HOUR_STROKE_WIDTH = 5f;
         private static final float MINUTE_STROKE_WIDTH = 3f;
         private static final float SECOND_TICK_STROKE_WIDTH = 2f;
-
         private static final float CENTER_GAP_AND_CIRCLE_RADIUS = 4f;
-
         private static final int SHADOW_RADIUS = 6;
-
         private static final int SERAPHIM_LOGO_COLOR = 0xFFFFFF4B;
 
         private final Rect mPeekCardBounds = new Rect();
-        /* Handler to update the time once a second in interactive mode. */
         private final Handler mUpdateTimeHandler = new EngineHandler(this);
         private Calendar mCalendar;
+
         private final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -104,25 +99,30 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
             }
         };
         private boolean mRegisteredTimeZoneReceiver = false;
+
+        private String mWatchBatteryPercentage = "";
+        private final BroadcastReceiver mWatchBatteryReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                mWatchBatteryPercentage = String.valueOf(intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) + "%");
+            }
+        };
+        private boolean mRegisteredWatchBatteryReceiver = false;
+
         private boolean mMuteMode;
         private float mCenterX;
         private float mCenterY;
         private float mSecondHandLength;
         private float sMinuteHandLength;
         private float sHourHandLength;
-        private int mWatchHandColor;
-        private int mWatchHandHighlightColor;
-        private int mWatchHandShadowColor;
         private Paint mHourPaint;
         private Paint mMinutePaint;
         private Paint mSecondPaint;
         private Paint mTickAndCirclePaint;
         private Paint mBackgroundPaint;
         private Bitmap mBackgroundBitmap;
-        private Bitmap mGrayBackgroundBitmap;
         private boolean mAmbient;
         private boolean mLowBitAmbient;
-        private boolean mBurnInProtection;
         private Paint mSmallTextPaint;
         private Paint mInfoTextPaint;
 
@@ -134,7 +134,6 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_SHORT)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
                     .setShowSystemUiTime(false)
-                    .setAcceptsTapEvents(true)
                     .build());
 
             mBackgroundPaint = new Paint();
@@ -152,51 +151,33 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
             mInfoTextPaint.setAntiAlias(true);
             mInfoTextPaint.setTextAlign(Paint.Align.CENTER);
 
-            /* Set defaults for colors */
-            mWatchHandColor = Color.WHITE;
-            mWatchHandHighlightColor = Color.WHITE;
-            mWatchHandShadowColor = Color.BLACK;
-
             mHourPaint = new Paint();
-            mHourPaint.setColor(mWatchHandColor);
+            mHourPaint.setColor(Color.WHITE);
             mHourPaint.setStrokeWidth(HOUR_STROKE_WIDTH);
             mHourPaint.setAntiAlias(true);
             mHourPaint.setStrokeCap(Paint.Cap.ROUND);
-            mHourPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
+            mHourPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
 
             mMinutePaint = new Paint();
-            mMinutePaint.setColor(mWatchHandColor);
+            mMinutePaint.setColor(Color.WHITE);
             mMinutePaint.setStrokeWidth(MINUTE_STROKE_WIDTH);
             mMinutePaint.setAntiAlias(true);
             mMinutePaint.setStrokeCap(Paint.Cap.ROUND);
-            mMinutePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
+            mMinutePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
 
             mSecondPaint = new Paint();
-            mSecondPaint.setColor(mWatchHandHighlightColor);
+            mSecondPaint.setColor(Color.WHITE);
             mSecondPaint.setStrokeWidth(SECOND_TICK_STROKE_WIDTH);
             mSecondPaint.setAntiAlias(true);
             mSecondPaint.setStrokeCap(Paint.Cap.ROUND);
-            mSecondPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
+            mSecondPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
 
             mTickAndCirclePaint = new Paint();
-            mTickAndCirclePaint.setColor(mWatchHandHighlightColor);
+            mTickAndCirclePaint.setColor(Color.WHITE);
             mTickAndCirclePaint.setStrokeWidth(SECOND_TICK_STROKE_WIDTH);
             mTickAndCirclePaint.setAntiAlias(true);
             mTickAndCirclePaint.setStyle(Paint.Style.STROKE);
-            mTickAndCirclePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
-
-            /* Extract colors from background image to improve watchface style. */
-            /*Palette.from(mBackgroundBitmap).generate(new Palette.PaletteAsyncListener() {
-                @Override
-                public void onGenerated(Palette palette) {
-                    if (palette != null) {
-                        //mWatchHandHighlightColor = palette.getVibrantColor(Color.WHITE);
-                        mWatchHandColor = palette.getLightVibrantColor(Color.WHITE);
-                        mWatchHandShadowColor = palette.getDarkMutedColor(Color.BLACK);
-                        updateWatchHandStyle();
-                    }
-                }
-            });*/
+            mTickAndCirclePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
 
             mCalendar = Calendar.getInstance();
         }
@@ -211,7 +192,6 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         public void onPropertiesChanged(Bundle properties) {
             super.onPropertiesChanged(properties);
             mLowBitAmbient = properties.getBoolean(PROPERTY_LOW_BIT_AMBIENT, false);
-            mBurnInProtection = properties.getBoolean(PROPERTY_BURN_IN_PROTECTION, false);
         }
 
         @Override
@@ -233,11 +213,6 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
 
         private void updateWatchHandStyle() {
             if (mAmbient) {
-                /*mHourPaint.setColor(Color.WHITE);
-                mMinutePaint.setColor(Color.WHITE);
-                mSecondPaint.setColor(Color.WHITE);
-                mTickAndCirclePaint.setColor(Color.WHITE);*/
-
                 if (mLowBitAmbient) {
                     mHourPaint.setAntiAlias(false);
                     mMinutePaint.setAntiAlias(false);
@@ -249,22 +224,16 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                 mMinutePaint.clearShadowLayer();
                 mSecondPaint.clearShadowLayer();
                 mTickAndCirclePaint.clearShadowLayer();
-
             } else {
-                /*mHourPaint.setColor(mWatchHandColor);
-                mMinutePaint.setColor(mWatchHandColor);
-                mSecondPaint.setColor(mWatchHandHighlightColor);
-                mTickAndCirclePaint.setColor(mWatchHandHighlightColor);*/
-
                 mHourPaint.setAntiAlias(true);
                 mMinutePaint.setAntiAlias(true);
                 mSecondPaint.setAntiAlias(true);
                 mTickAndCirclePaint.setAntiAlias(true);
 
-                mHourPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
-                mMinutePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
-                mSecondPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
-                mTickAndCirclePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, mWatchHandShadowColor);
+                mHourPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
+                mMinutePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
+                mSecondPaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
+                mTickAndCirclePaint.setShadowLayer(SHADOW_RADIUS, 0, 0, Color.BLACK);
             }
         }
 
@@ -287,17 +256,9 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         public void onSurfaceChanged(SurfaceHolder holder, int format, int width, int height) {
             super.onSurfaceChanged(holder, format, width, height);
 
-            /*
-             * Find the coordinates of the center point on the screen, and ignore the window
-             * insets, so that, on round watches with a "chin", the watch face is centered on the
-             * entire screen, not just the usable portion.
-             */
             mCenterX = width / 2f;
             mCenterY = height / 2f;
 
-            /*
-             * Calculate lengths of different hands based on watch screen size.
-             */
             mSecondHandLength = (float) (mCenterX * 0.875);
             sMinuteHandLength = (float) (mCenterX * 0.75);
             sHourHandLength = (float) (mCenterX * 0.5);
@@ -305,60 +266,9 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
 
             /* Scale loaded background image (more efficient) if surface dimensions change. */
             float scale = ((float) width) / (float) mBackgroundBitmap.getWidth();
-
             mBackgroundBitmap = Bitmap.createScaledBitmap(mBackgroundBitmap,
                     (int) (mBackgroundBitmap.getWidth() * scale),
                     (int) (mBackgroundBitmap.getHeight() * scale), true);
-
-            /*
-             * Create a gray version of the image only if it will look nice on the device in
-             * ambient mode. That means we don't want devices that support burn-in
-             * protection (slight movements in pixels, not great for images going all the way to
-             * edges) and low ambient mode (degrades image quality).
-             *
-             * Also, if your watch face will know about all images ahead of time (users aren't
-             * selecting their own photos for the watch face), it will be more
-             * efficient to create a black/white version (png, etc.) and load that when you need it.
-             */
-            /*if (!mBurnInProtection && !mLowBitAmbient) {
-                initGrayBackgroundBitmap();
-            }*/
-        }
-
-        private void initGrayBackgroundBitmap() {
-            mGrayBackgroundBitmap = Bitmap.createBitmap(
-                    mBackgroundBitmap.getWidth(),
-                    mBackgroundBitmap.getHeight(),
-                    Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(mGrayBackgroundBitmap);
-            Paint grayPaint = new Paint();
-            ColorMatrix colorMatrix = new ColorMatrix();
-            colorMatrix.setSaturation(0);
-            ColorMatrixColorFilter filter = new ColorMatrixColorFilter(colorMatrix);
-            grayPaint.setColorFilter(filter);
-            canvas.drawBitmap(mBackgroundBitmap, 0, 0, grayPaint);
-        }
-
-        /**
-         * Captures tap event (and tap type). The {@link WatchFaceService#TAP_TYPE_TAP} case can be
-         * used for implementing specific logic to handle the gesture.
-         */
-        @Override
-        public void onTapCommand(int tapType, int x, int y, long eventTime) {
-            switch (tapType) {
-                case TAP_TYPE_TOUCH:
-                    // The user has started touching the screen.
-                    break;
-                case TAP_TYPE_TOUCH_CANCEL:
-                    // The user has started a different gesture or otherwise cancelled the tap.
-                    break;
-                case TAP_TYPE_TAP:
-                    // The user has completed the tap gesture.
-                    /*Toast.makeText(getApplicationContext(), R.string.message, Toast.LENGTH_SHORT)
-                            .show();*/
-                    break;
-            }
-            invalidate();
         }
 
         @Override
@@ -366,26 +276,15 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
             long now = System.currentTimeMillis();
             mCalendar.setTimeInMillis(now);
 
-            /*if (mAmbient && (mLowBitAmbient || mBurnInProtection)) {
-                canvas.drawColor(Color.BLACK);
-            } else if (mAmbient) {
-                canvas.drawBitmap(mGrayBackgroundBitmap, 0, 0, mBackgroundPaint);
-            } else {
-                canvas.drawBitmap(mBackgroundBitmap, 0, 0, mBackgroundPaint);
-            }*/
             if (mAmbient) {
                 canvas.drawColor(Color.BLACK);
             } else {
                 canvas.drawBitmap(mBackgroundBitmap, 0, 0, mBackgroundPaint);
                 canvas.drawText(DateFormat.format("EEE", mCalendar).toString(), mCenterX, mCenterY / 2f - 8f, mSmallTextPaint);
                 canvas.drawText(DateFormat.format("MMM d", mCalendar).toString(), mCenterX, mCenterY / 2f + 8f, mInfoTextPaint);
+                canvas.drawText(mWatchBatteryPercentage, mCenterX, mCenterY * 1.5f, mSmallTextPaint);
             }
 
-            /*
-             * Draw ticks. Usually you will want to bake this directly into the photo, but in
-             * cases where you want to allow users to select their own photos, this dynamically
-             * creates them on top of the photo.
-             */
             float innerTickRadius;
             float innerTickRadiusTicks = mCenterX - 10;
             float innerTickRadiusQuarters = mCenterX - 15;
@@ -405,8 +304,7 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
              * These calculations reflect the rotation in degrees per unit of time, e.g.,
              * 360 / 60 = 6 and 360 / 12 = 30.
              */
-            final float seconds =
-                    (mCalendar.get(Calendar.SECOND) + mCalendar.get(Calendar.MILLISECOND) / 1000f);
+            final float seconds = (mCalendar.get(Calendar.SECOND) + mCalendar.get(Calendar.MILLISECOND) / 1000f);
             final float secondsRotation = seconds * 6f;
 
             final float minutesRotation = mCalendar.get(Calendar.MINUTE) * 6f;
@@ -414,9 +312,7 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
             final float hourHandOffset = mCalendar.get(Calendar.MINUTE) / 2f;
             final float hoursRotation = (mCalendar.get(Calendar.HOUR) * 30) + hourHandOffset;
 
-            /*
-             * Save the canvas state before we can begin to rotate it.
-             */
+            //Save the canvas state before we can begin to rotate it.
             canvas.save();
 
             canvas.rotate(hoursRotation, mCenterX, mCenterY);
@@ -488,20 +384,29 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         }
 
         private void registerReceiver() {
-            if (mRegisteredTimeZoneReceiver) {
-                return;
+            if (!mRegisteredTimeZoneReceiver) {
+                mRegisteredTimeZoneReceiver = true;
+                IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
+                SeraphimWatchFace.this.registerReceiver(mTimeZoneReceiver, filter);
             }
-            mRegisteredTimeZoneReceiver = true;
-            IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
-            SeraphimWatchFace.this.registerReceiver(mTimeZoneReceiver, filter);
+
+            if (!mRegisteredWatchBatteryReceiver) {
+                mRegisteredWatchBatteryReceiver = true;
+                IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+                SeraphimWatchFace.this.registerReceiver(mWatchBatteryReceiver, filter);
+            }
         }
 
         private void unregisterReceiver() {
-            if (!mRegisteredTimeZoneReceiver) {
-                return;
+            if (mRegisteredTimeZoneReceiver) {
+                mRegisteredTimeZoneReceiver = false;
+                SeraphimWatchFace.this.unregisterReceiver(mTimeZoneReceiver);
             }
-            mRegisteredTimeZoneReceiver = false;
-            SeraphimWatchFace.this.unregisterReceiver(mTimeZoneReceiver);
+
+            if (mRegisteredWatchBatteryReceiver) {
+                mRegisteredWatchBatteryReceiver = false;
+                SeraphimWatchFace.this.unregisterReceiver(mWatchBatteryReceiver);
+            }
         }
 
         /**
