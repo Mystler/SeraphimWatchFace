@@ -280,9 +280,9 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                 canvas.drawColor(Color.BLACK);
             } else {
                 canvas.drawBitmap(mBackgroundBitmap, 0, 0, mBackgroundPaint);
-                canvas.drawText(DateFormat.format("EEE", mCalendar).toString(), mCenterX, mCenterY / 2f - 8f, mSmallTextPaint);
-                canvas.drawText(DateFormat.format("MMM d", mCalendar).toString(), mCenterX, mCenterY / 2f + 8f, mInfoTextPaint);
-                canvas.drawText(mWatchBatteryPercentage, mCenterX, mCenterY * 1.5f, mSmallTextPaint);
+                canvas.drawText(DateFormat.format("EEE", mCalendar).toString(), mCenterX, mCenterY / 2f - mInfoTextPaint.getTextSize() / 2f, mSmallTextPaint);
+                canvas.drawText(DateFormat.format("MMM d", mCalendar).toString(), mCenterX, mCenterY / 2f + mInfoTextPaint.getTextSize() / 2f, mInfoTextPaint);
+                canvas.drawText(mWatchBatteryPercentage, mCenterX, mCenterY * 1.75f, mSmallTextPaint);
             }
 
             float innerTickRadius;
