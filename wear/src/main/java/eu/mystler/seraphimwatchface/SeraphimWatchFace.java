@@ -127,7 +127,9 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         private Paint mSmallTextPaint;
         private Paint mInfoTextPaint;
 
-        private String mHandheldNodeId = null;
+        private final long HANDHELD_UPDATE_INTERVAL_MS = TimeUnit.MINUTES.toMillis(10);
+        private long mLastUpdateRequestTime = 0;
+        private String mTemperature = "";
         private String mWatchBatteryPercentage = "";
         private String mPhoneBatteryPercentage = "";
         private GoogleApiClient mGoogleApiClient;
@@ -315,8 +317,9 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                 canvas.drawBitmap(mBackgroundBitmap, 0, 0, mBackgroundPaint);
                 canvas.drawText(DateFormat.format("EEE", mCalendar).toString(), mCenterX, mCenterY / 2f - mInfoTextPaint.getTextSize() / 2f, mSmallTextPaint);
                 canvas.drawText(DateFormat.format("MMM d", mCalendar).toString(), mCenterX, mCenterY / 2f + mInfoTextPaint.getTextSize() / 2f, mInfoTextPaint);
-                canvas.drawText(mWatchBatteryPercentage, mCenterX, mCenterY * 1.75f, mSmallTextPaint);
+                canvas.drawText(mTemperature, mCenterX, mCenterY * 1.75f - 2f * mSmallTextPaint.getTextSize(), mSmallTextPaint);
                 canvas.drawText(mPhoneBatteryPercentage, mCenterX, mCenterY * 1.75f - mSmallTextPaint.getTextSize(), mSmallTextPaint);
+                canvas.drawText(mWatchBatteryPercentage, mCenterX, mCenterY * 1.75f, mSmallTextPaint);
             }
 
             float innerTickRadius;
@@ -408,7 +411,7 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
 
                 invalidate();
             } else {
-                if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+                if (mGoogleApiClient.isConnected()) {
                     Wearable.MessageApi.removeListener(mGoogleApiClient, this);
                     mGoogleApiClient.disconnect();
                 }
@@ -479,7 +482,9 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         }
 
         private void requestUpdateFromHandheld() {
-            if (mGoogleApiClient == null || !mGoogleApiClient.isConnected())
+            if (System.currentTimeMillis() - HANDHELD_UPDATE_INTERVAL_MS < mLastUpdateRequestTime)
+                return;
+            if (!mGoogleApiClient.isConnected())
                 return;
 
             PendingResult<CapabilityApi.GetCapabilityResult> result =
@@ -491,15 +496,18 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                 @Override
                 public void onResult(final CapabilityApi.GetCapabilityResult result) {
                     if(result.getStatus().isSuccess()) {
+                        String handheldNodeId = null;
                         for (Node node : result.getCapability().getNodes()) {
                             if (node.isNearby()) {
-                                mHandheldNodeId = node.getId();
+                                handheldNodeId = node.getId();
                                 break;
                             }
-                            mHandheldNodeId = node.getId();
+                            handheldNodeId = node.getId();
                         }
-                        if (mHandheldNodeId != null && mGoogleApiClient != null && mGoogleApiClient.isConnected())
-                            Wearable.MessageApi.sendMessage(mGoogleApiClient, mHandheldNodeId, "/seraphim-update-request", null);
+                        if (handheldNodeId != null && mGoogleApiClient.isConnected()) {
+                            Wearable.MessageApi.sendMessage(mGoogleApiClient, handheldNodeId, "/seraphim-update-request", null);
+                            mLastUpdateRequestTime = System.currentTimeMillis();
+                        }
                     }
                 }
             });
@@ -507,8 +515,11 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
 
         @Override
         public void onMessageReceived(MessageEvent messageEvent) {
-            if (messageEvent.getPath().equals("/seraphim-update-response")) {
+            if (messageEvent.getPath().equals("/seraphim-update-phonebattery")) {
                 mPhoneBatteryPercentage = new String(messageEvent.getData());
+            }
+            if (messageEvent.getPath().equals("/seraphim-update-temperature")) {
+                mTemperature = new String(messageEvent.getData());
             }
         }
     }
