@@ -36,6 +36,16 @@ import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.DateFormat;
 import android.view.SurfaceHolder;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.CapabilityApi;
+import com.google.android.gms.wearable.MessageApi;
+import com.google.android.gms.wearable.MessageEvent;
+import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.Wearable;
+
 import java.lang.ref.WeakReference;
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -79,7 +89,7 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine {
+    private class Engine extends CanvasWatchFaceService.Engine implements MessageApi.MessageListener {
         private static final float HOUR_STROKE_WIDTH = 5f;
         private static final float MINUTE_STROKE_WIDTH = 3f;
         private static final float SECOND_TICK_STROKE_WIDTH = 2f;
@@ -100,15 +110,6 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         };
         private boolean mRegisteredTimeZoneReceiver = false;
 
-        private String mWatchBatteryPercentage = "";
-        private final BroadcastReceiver mWatchBatteryReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                mWatchBatteryPercentage = String.valueOf(intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) + "%");
-            }
-        };
-        private boolean mRegisteredWatchBatteryReceiver = false;
-
         private boolean mMuteMode;
         private float mCenterX;
         private float mCenterY;
@@ -126,6 +127,11 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
         private Paint mSmallTextPaint;
         private Paint mInfoTextPaint;
 
+        private String mHandheldNodeId = null;
+        private String mWatchBatteryPercentage = "";
+        private String mPhoneBatteryPercentage = "";
+        private GoogleApiClient mGoogleApiClient;
+
         @Override
         public void onCreate(SurfaceHolder holder) {
             super.onCreate(holder);
@@ -135,6 +141,28 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
                     .setShowSystemUiTime(false)
                     .build());
+
+            mGoogleApiClient = new GoogleApiClient.Builder(SeraphimWatchFace.this)
+                    .addConnectionCallbacks(new GoogleApiClient.ConnectionCallbacks() {
+                        @Override
+                        public void onConnected(Bundle connectionHint) {
+                            Wearable.MessageApi.addListener(mGoogleApiClient, Engine.this);
+                            requestUpdateFromHandheld();
+                        }
+                        @Override
+                        public void onConnectionSuspended(int cause) {
+                        }
+                    })
+                    .addOnConnectionFailedListener(new GoogleApiClient.OnConnectionFailedListener() {
+                        @Override
+                        public void onConnectionFailed(ConnectionResult result) {
+                        }
+                    })
+                    // Request access only to the Wearable API
+                    .addApi(Wearable.API)
+                    .build();
+
+            updateWatchBatteryPercentage();
 
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(Color.BLACK);
@@ -209,6 +237,11 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
 
             /* Check and trigger whether or not timer should be running (only in active mode). */
             updateTimer();
+
+            if (!mAmbient) {
+                updateWatchBatteryPercentage();
+                requestUpdateFromHandheld();
+            }
         }
 
         private void updateWatchHandStyle() {
@@ -283,6 +316,7 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                 canvas.drawText(DateFormat.format("EEE", mCalendar).toString(), mCenterX, mCenterY / 2f - mInfoTextPaint.getTextSize() / 2f, mSmallTextPaint);
                 canvas.drawText(DateFormat.format("MMM d", mCalendar).toString(), mCenterX, mCenterY / 2f + mInfoTextPaint.getTextSize() / 2f, mInfoTextPaint);
                 canvas.drawText(mWatchBatteryPercentage, mCenterX, mCenterY * 1.75f, mSmallTextPaint);
+                canvas.drawText(mPhoneBatteryPercentage, mCenterX, mCenterY * 1.75f - mSmallTextPaint.getTextSize(), mSmallTextPaint);
             }
 
             float innerTickRadius;
@@ -366,10 +400,19 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
 
             if (visible) {
                 registerReceiver();
-                /* Update time zone in case it changed while we weren't visible. */
+
+                // Update time zone in case it changed while we weren't visible.
                 mCalendar.setTimeZone(TimeZone.getDefault());
+
+                mGoogleApiClient.connect();
+
                 invalidate();
             } else {
+                if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+                    Wearable.MessageApi.removeListener(mGoogleApiClient, this);
+                    mGoogleApiClient.disconnect();
+                }
+
                 unregisterReceiver();
             }
 
@@ -389,23 +432,12 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                 IntentFilter filter = new IntentFilter(Intent.ACTION_TIMEZONE_CHANGED);
                 SeraphimWatchFace.this.registerReceiver(mTimeZoneReceiver, filter);
             }
-
-            if (!mRegisteredWatchBatteryReceiver) {
-                mRegisteredWatchBatteryReceiver = true;
-                IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-                SeraphimWatchFace.this.registerReceiver(mWatchBatteryReceiver, filter);
-            }
         }
 
         private void unregisterReceiver() {
             if (mRegisteredTimeZoneReceiver) {
                 mRegisteredTimeZoneReceiver = false;
                 SeraphimWatchFace.this.unregisterReceiver(mTimeZoneReceiver);
-            }
-
-            if (mRegisteredWatchBatteryReceiver) {
-                mRegisteredWatchBatteryReceiver = false;
-                SeraphimWatchFace.this.unregisterReceiver(mWatchBatteryReceiver);
             }
         }
 
@@ -437,6 +469,46 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                 long delayMs = INTERACTIVE_UPDATE_RATE_MS
                         - (timeMs % INTERACTIVE_UPDATE_RATE_MS);
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
+            }
+        }
+
+        private void updateWatchBatteryPercentage() {
+            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent intent = SeraphimWatchFace.this.registerReceiver(null, ifilter);
+            mWatchBatteryPercentage = String.valueOf(intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) + "%");
+        }
+
+        private void requestUpdateFromHandheld() {
+            if (mGoogleApiClient == null || !mGoogleApiClient.isConnected())
+                return;
+
+            PendingResult<CapabilityApi.GetCapabilityResult> result =
+                    Wearable.CapabilityApi.getCapability(
+                            mGoogleApiClient, "seraphim_handheld",
+                            CapabilityApi.FILTER_REACHABLE);
+
+            result.setResultCallback(new ResultCallback<CapabilityApi.GetCapabilityResult>() {
+                @Override
+                public void onResult(final CapabilityApi.GetCapabilityResult result) {
+                    if(result.getStatus().isSuccess()) {
+                        for (Node node : result.getCapability().getNodes()) {
+                            if (node.isNearby()) {
+                                mHandheldNodeId = node.getId();
+                                break;
+                            }
+                            mHandheldNodeId = node.getId();
+                        }
+                        if (mHandheldNodeId != null && mGoogleApiClient != null && mGoogleApiClient.isConnected())
+                            Wearable.MessageApi.sendMessage(mGoogleApiClient, mHandheldNodeId, "/seraphim-update-request", null);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void onMessageReceived(MessageEvent messageEvent) {
+            if (messageEvent.getPath().equals("/seraphim-update-response")) {
+                mPhoneBatteryPercentage = new String(messageEvent.getData());
             }
         }
     }

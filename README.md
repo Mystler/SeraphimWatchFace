@@ -1,7 +1,8 @@
 Seraphim Watch Face
 ===================
 
-A simple watch face for Android Wear that features the Seraphim logo background and a date display.
+A simple watch face for Android Wear that features the Seraphim logo background. A date display is at the top.
+The bottom display shows the battery levels of your phone and watch.
 
 Ambient mode is minimalistic and only shows a white analog clock.
 
