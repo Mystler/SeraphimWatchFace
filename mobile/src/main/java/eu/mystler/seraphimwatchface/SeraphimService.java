@@ -40,6 +40,9 @@ public class SeraphimService extends WearableListenerService {
         if (!connectionResult.isSuccess())
             return;
 
+        // Update phone battery percentage
+        Wearable.MessageApi.sendMessage(googleApiClient, messageEvent.getSourceNodeId(), "/seraphim-update-phonebattery", getBatteryPercentage().getBytes());
+
         // Update Temperature
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             Location lastLoc = LocationServices.FusedLocationApi.getLastLocation(googleApiClient);
@@ -47,9 +50,6 @@ public class SeraphimService extends WearableListenerService {
             if (temp != null)
                 Wearable.MessageApi.sendMessage(googleApiClient, messageEvent.getSourceNodeId(), "/seraphim-update-temperature", temp.getBytes());
         }
-
-        // Update phone battery percentage
-        Wearable.MessageApi.sendMessage(googleApiClient, messageEvent.getSourceNodeId(), "/seraphim-update-phonebattery", getBatteryPercentage().getBytes());
 
         googleApiClient.disconnect();
     }
