@@ -498,11 +498,9 @@ public class SeraphimWatchFace extends CanvasWatchFaceService {
                     if(result.getStatus().isSuccess()) {
                         String handheldNodeId = null;
                         for (Node node : result.getCapability().getNodes()) {
-                            if (node.isNearby()) {
-                                handheldNodeId = node.getId();
-                                break;
-                            }
                             handheldNodeId = node.getId();
+                            if (node.isNearby())
+                                break;
                         }
                         if (handheldNodeId != null && mGoogleApiClient.isConnected()) {
                             Wearable.MessageApi.sendMessage(mGoogleApiClient, handheldNodeId, "/seraphim-update-request", null);

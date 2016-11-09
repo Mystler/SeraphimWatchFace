@@ -8,4 +8,6 @@ minutes and only when the watch face is shown.
 
 Ambient mode is minimalistic and only shows a white analog clock.
 
+Weather data provided by [OpenWeatherMap](https://openweathermap.org/).
+
 ![Watch Face Preview](https://raw.githubusercontent.com/Mystler/SeraphimWatchFace/master/wear/src/main/res/drawable-nodpi/preview_analog.png "Watch Face Preview")
