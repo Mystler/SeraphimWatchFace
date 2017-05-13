@@ -61,6 +61,8 @@ public class SeraphimService extends WearableListenerService {
     }
 
     private String getTemperature(Location loc) {
+        if (loc == null)
+            return "";
         RequestQueue queue = Volley.newRequestQueue(this);
         String url ="http://api.openweathermap.org/data/2.5/weather?lat=" + loc.getLatitude()
                 + "&lon=" + loc.getLongitude()
@@ -72,7 +74,7 @@ public class SeraphimService extends WearableListenerService {
             JSONObject response = future.get(10, TimeUnit.SECONDS);
             return String.valueOf(Math.round(response.getJSONObject("main").getDouble("temp"))) + "°";
         } catch (InterruptedException | TimeoutException | ExecutionException | JSONException e) {
-            return null;
+            return "";
         }
     }
 }
